@@ -7,6 +7,7 @@ import aioboto3
 from botocore.exceptions import ClientError
 
 from src.config import settings
+from src.models.pix import TransferResponse
 
 
 class PixRepository:
@@ -36,10 +37,38 @@ class PixRepository:
                 if isinstance(body, str):
                     body = json.loads(body)
                 return {
-                    "response_status": int(item["response_status"]),
+                    "response_status": int(item["response_status"]) if isinstance(item["response_status"], (int, float)) or (isinstance(item["response_status"], str) and item["response_status"].isdigit()) else item["response_status"],
                     "response_body": body,
                 }
             return None
+
+    async def try_acquire_idempotency_lock(
+        self,
+        idempotency_key: str,
+        ttl_seconds: int = 86400,
+    ) -> bool:
+        pk = f"IDEMPOTENCY#{idempotency_key}"
+        sk = "LOCK"
+        ttl = int(time.time()) + ttl_seconds
+
+        async with self.session.resource("dynamodb", **self._get_resource_kwargs()) as dynamo:
+            table = await dynamo.Table(settings.dynamodb_table_name)
+            try:
+                await table.put_item(
+                    Item={
+                        "PK": pk,
+                        "SK": sk,
+                        "response_status": "PROCESSING",
+                        "response_body": "{}",
+                        "ttl": ttl,
+                    },
+                    ConditionExpression="attribute_not_exists(PK)",
+                )
+                return True
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                    return False
+                raise
 
     async def save_idempotency_record(
         self,
@@ -136,18 +165,9 @@ class PixRepository:
 
             return False
 
-    async def save_transaction(
-        self,
-        account_id: str,
-        transfer_id: str,
-        amount: float,
-        pix_key: str,
-        pix_key_type: str,
-        status: str,
-        created_at: str,
-    ) -> None:
-        pk = f"ACCOUNT#{account_id}"
-        sk = f"TX#{transfer_id}"
+    async def save_transaction(self, response: TransferResponse) -> None:
+        pk = f"ACCOUNT#{response.account_id}"
+        sk = f"TX#{response.transfer_id}"
 
         async with self.session.resource("dynamodb", **self._get_resource_kwargs()) as dynamo:
             table = await dynamo.Table(settings.dynamodb_table_name)
@@ -155,12 +175,12 @@ class PixRepository:
                 Item={
                     "PK": pk,
                     "SK": sk,
-                    "transfer_id": transfer_id,
-                    "account_id": account_id,
-                    "amount": Decimal(f"{amount:.2f}"),
-                    "pix_key": pix_key,
-                    "pix_key_type": pix_key_type,
-                    "status": status,
-                    "created_at": created_at,
+                    "transfer_id": response.transfer_id,
+                    "account_id": response.account_id,
+                    "amount": Decimal(f"{response.amount:.2f}"),
+                    "pix_key": response.pix_key,
+                    "pix_key_type": response.pix_key_type.value,
+                    "status": response.status.value,
+                    "created_at": response.created_at,
                 }
             )
