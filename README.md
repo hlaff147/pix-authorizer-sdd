@@ -115,20 +115,20 @@ Para otimizar o tempo de resposta e garantir consistência na simulação server
 ```mermaid
 erDiagram
     PIX_TRANSACTIONS_STORE {
-        string PK "Chave de Partição"
-        string SK "Chave de Ordenação"
+        string partition_key PK "Chave de Partição (PK)"
+        string sort_key "Chave de Ordenação (SK)"
     }
 
     LIMITE_DIARIO {
-        string PK "ACCOUNT#account_id"
-        string SK "LIMIT#YYYY-MM-DD"
+        string partition_key PK "PK: ACCOUNT#account_id"
+        string sort_key "SK: LIMIT#YYYY-MM-DD"
         decimal daily_spent "Acumulado do dia"
         string updated_at "ISO 8601"
     }
 
     TRANSACAO {
-        string PK "ACCOUNT#account_id"
-        string SK "TX#transfer_id"
+        string partition_key PK "PK: ACCOUNT#account_id"
+        string sort_key "SK: TX#transfer_id"
         decimal amount "Valor da transferência"
         string pix_key "Chave PIX destino"
         string pix_key_type "CPF CNPJ EMAIL PHONE EVP"
@@ -137,8 +137,8 @@ erDiagram
     }
 
     IDEMPOTENCIA {
-        string PK "IDEMPOTENCY#uuid"
-        string SK "LOCK"
+        string partition_key PK "PK: IDEMPOTENCY#uuid"
+        string sort_key "SK: LOCK"
         int response_status "HTTP status code"
         string response_body "JSON serializado"
         int ttl "Unix timestamp"
