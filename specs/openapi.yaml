@@ -1,0 +1,153 @@
+openapi: "3.0.3"
+info:
+  title: "Pix Authorizer API"
+  version: "1.0.0"
+  description: "API de autorização de transações PIX com idempotência e limite diário."
+paths:
+  /v1/transfers:
+    post:
+      operationId: createTransfer
+      summary: "Criar uma nova transferência PIX"
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+      responses:
+        "201":
+          description: "Transferência Aprovada"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+        "400":
+          description: "Recusado por regra de negócio (ex: Limite diário excedido)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: "Erro de Validação de Schema"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+
+components:
+  schemas:
+    PixKeyType:
+      type: string
+      enum:
+        - CPF
+        - CNPJ
+        - EMAIL
+        - PHONE
+        - EVP
+
+    TransferRequest:
+      type: object
+      required:
+        - account_id
+        - amount
+        - pix_key
+        - pix_key_type
+      properties:
+        account_id:
+          type: string
+          example: "acc-12345"
+        amount:
+          type: number
+          format: float
+          exclusiveMinimum: 0
+          maximum: 5000.00
+          example: 150.50
+        pix_key:
+          type: string
+          example: "12345678900"
+        pix_key_type:
+          $ref: "#/components/schemas/PixKeyType"
+
+    TransferResponse:
+      type: object
+      required:
+        - transfer_id
+        - account_id
+        - amount
+        - pix_key
+        - pix_key_type
+        - status
+        - created_at
+      properties:
+        transfer_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        account_id:
+          type: string
+          example: "acc-12345"
+        amount:
+          type: number
+          format: float
+          example: 150.50
+        pix_key:
+          type: string
+          example: "12345678900"
+        pix_key_type:
+          $ref: "#/components/schemas/PixKeyType"
+        status:
+          type: string
+          enum:
+            - APPROVED
+            - REJECTED
+          example: "APPROVED"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-08-08T12:00:00Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          type: string
+          example: "DAILY_LIMIT_EXCEEDED"
+        message:
+          type: string
+          example: "Limite diário excedido"
+
+    ValidationError:
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      properties:
+        loc:
+          type: array
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+        msg:
+          type: string
+        type:
+          type: string
+
+    HTTPValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationError"
